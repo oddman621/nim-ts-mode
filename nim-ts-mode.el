@@ -49,6 +49,9 @@
   :type 'boolean
   :group 'nim-ts-mode)
 
+(defvar-local nim-ts-mode--pending-indent nil
+  "A manually chosen indentation to carry across the next newline.")
+
 (defvar nim-ts-mode--syntax-table
   (let ((table (make-syntax-table)))
     ;; Nim's ordinary comments begin with # and end at newline.  Tree-sitter
@@ -174,6 +177,24 @@
     (when position (goto-char position))
     (current-indentation)))
 
+(defun nim-ts-mode--pending-indent-for-current-line ()
+  "Return the manually chosen indentation if it applies to the current line."
+  (when nim-ts-mode--pending-indent
+    (let* ((source-line (car nim-ts-mode--pending-indent))
+           (target (cdr nim-ts-mode--pending-indent))
+           (line (line-number-at-pos))
+           (blank (string-empty-p (nim-ts-mode--line-text))))
+      (cond
+       ((and (= line source-line) blank)
+        target)
+       ((and (= line (1+ source-line)) blank)
+        ;; Carry an explicit adjustment through the next newline once.
+        (setq nim-ts-mode--pending-indent nil)
+        target)
+       (t
+        (setq nim-ts-mode--pending-indent nil)
+        nil)))))
+
 (defun nim-ts-mode--previous-code-line ()
   "Return (INDENT . TEXT) for the preceding nonblank, non-line-comment line.
 Return nil if there is no such line."
@@ -271,11 +292,14 @@ This uses Tree-sitter-compatible editing plus layout-aware heuristics."
            (branch (nim-ts-mode--branch-keyword current-text))
            (branch-indent (and branch
                                (nim-ts-mode--branch-indent branch previous-indent)))
+           (manual-indent (nim-ts-mode--pending-indent-for-current-line))
            (closer-indent (nim-ts-mode--closing-delimiter-indent))
            (delimiter-indent (nim-ts-mode--open-delimiter-indent)))
       (cond
        (closer-indent closer-indent)
        (branch-indent branch-indent)
+       ;; Preserve a deliberate Shift+Tab indentation on a blank line.
+       (manual-indent manual-indent)
        (delimiter-indent delimiter-indent)
        ((null previous) 0)
        ((nim-ts-mode--block-opener-p previous-text)
@@ -295,6 +319,26 @@ This uses Tree-sitter-compatible editing plus layout-aware heuristics."
     (indent-line-to target)
     (when (> offset 0)
       (move-to-column (+ target offset)))))
+
+(defun nim-ts-mode--adjust-line-indentation (amount)
+  "Adjust current line indentation by AMOUNT spaces."
+  (let ((target (max 0 (+ (current-indentation) amount)))
+        (offset (- (current-column) (current-indentation))))
+    (indent-line-to target)
+    (when (> offset 0)
+      (move-to-column (+ target offset)))
+    (setq nim-ts-mode--pending-indent
+          (cons (line-number-at-pos) target))))
+
+(defun nim-ts-mode-indent-line-more ()
+  "Increase indentation of the current line by one indentation step."
+  (interactive)
+  (nim-ts-mode--adjust-line-indentation nim-ts-mode-indent-offset))
+
+(defun nim-ts-mode-dedent-line ()
+  "Decrease indentation of the current line by one indentation step."
+  (interactive)
+  (nim-ts-mode--adjust-line-indentation (- nim-ts-mode-indent-offset)))
 
 ;;;###autoload
 (define-derived-mode nim-ts-mode prog-mode "Nim[TS]"
@@ -316,6 +360,7 @@ Install the Nim grammar with `M-x treesit-install-language-grammar RET nim RET'.
 
   ;; Use spaces: Nim's layout syntax is indentation-sensitive.
   (setq-local indent-tabs-mode nil)
+  (setq-local nim-ts-mode--pending-indent nil)
   (setq-local indent-line-function #'nim-ts-mode-indent-line)
   (setq-local comment-start "# ")
   (setq-local comment-end "")
@@ -324,6 +369,10 @@ Install the Nim grammar with `M-x treesit-install-language-grammar RET nim RET'.
   (setq-local paragraph-start "[ \t]*$")
   (unless nim-ts-mode-enable-automatic-indentation
     (setq-local electric-indent-inhibit t)))
+
+(define-key nim-ts-mode-map (kbd "TAB") #'nim-ts-mode-indent-line-more)
+(define-key nim-ts-mode-map (kbd "<backtab>") #'nim-ts-mode-dedent-line)
+(define-key nim-ts-mode-map (kbd "S-TAB") #'nim-ts-mode-dedent-line)
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.nim\\'" . nim-ts-mode))

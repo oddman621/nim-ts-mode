@@ -242,17 +242,10 @@ Otherwise return nil."
     (when (and (numberp depth) (> depth 0) (integer-or-marker-p open))
       (save-excursion
         (goto-char open)
-        (let ((open-column (current-column))
-              (after-open (1+ open)))
-          (goto-char after-open)
-          (skip-chars-forward " \t")
-          (if (and (< (point) (line-end-position))
-                   (not (eq (char-after) ?\n)))
-              (current-column)
-            (+ open-column nim-ts-mode-indent-offset)))))))
+        (+ (current-indentation) nim-ts-mode-indent-offset)))))
 
 (defun nim-ts-mode--closing-delimiter-indent ()
-  "Return matching opener indentation for a line starting with a closer."
+  "Return the indentation of the line containing the matching opener."
   (save-excursion
     (back-to-indentation)
     (when (looking-at-p "[])}]")
@@ -260,7 +253,7 @@ Otherwise return nil."
              (open (nth 1 state)))
         (when (and (> (car state) 0) (integer-or-marker-p open))
           (goto-char open)
-          (current-column))))))
+          (current-indentation))))))
 
 (defun nim-ts-mode-calculate-indentation ()
   "Calculate a conservative indentation level for the current Nim line.

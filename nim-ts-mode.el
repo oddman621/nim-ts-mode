@@ -315,15 +315,19 @@ This uses Tree-sitter-compatible editing plus layout-aware heuristics."
 (defun nim-ts-mode-newline ()
   "Insert a newline and apply Nim indentation, honoring manual adjustment."
   (interactive)
-  (let ((manual-indent nim-ts-mode--pending-indent)
-        (automatic-indent nim-ts-mode-enable-automatic-indentation))
+  (let* ((manual-indent nim-ts-mode--pending-indent)
+         (automatic-indent nim-ts-mode-enable-automatic-indentation)
+         (blank-line (string-empty-p (nim-ts-mode--line-text)))
+         (current-indent (current-indentation)))
     (setq nim-ts-mode--pending-indent nil)
     (let ((electric-indent-inhibit t))
       (newline))
     (when (or automatic-indent manual-indent)
       (indent-line-to
-       (max 0 (or manual-indent
-                  (nim-ts-mode-calculate-indentation))))
+       (max 0
+            (or manual-indent
+                (and blank-line automatic-indent current-indent)
+                (nim-ts-mode-calculate-indentation))))
       (back-to-indentation))))
 
 ;;;###autoload
